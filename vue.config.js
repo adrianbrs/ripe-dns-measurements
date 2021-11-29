@@ -1,6 +1,7 @@
 module.exports = {
   transpileDependencies: ["vuetify"],
   outputDir: "docs",
+  publicPath: "/ripe-dns-measurements/",
   pages: {
     index: {
       // entry for the page
