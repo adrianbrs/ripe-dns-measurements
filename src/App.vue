@@ -8,6 +8,8 @@
 
       <v-spacer></v-spacer>
 
+      <v-spacer></v-spacer>
+
       <v-btn
         href="https://github.com/adrianbrs/ripe-dns-measurements"
         target="_blank"
@@ -66,6 +68,13 @@
           </v-card-text>
         </v-tab-item>
       </v-tabs-items>
+
+      <v-card-footer>
+        <v-alert icon="mdi-alert-outline" class="ma-0">
+          Atualmente, suporta apenas entradas com alvo
+          "<strong>e.root-servers.net</strong>"
+        </v-alert>
+      </v-card-footer>
     </v-card>
 
     <v-main>
