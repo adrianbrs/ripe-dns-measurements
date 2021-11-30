@@ -3,6 +3,8 @@ import App from "./App.vue";
 import vuetify from "./plugins/vuetify";
 import "./plugins/vuetify-datetime-picker";
 import "./plugins/v-mask";
+import "./plugins/highcharts";
+import "./plugins/dayjs";
 
 Vue.config.productionTip = false;
 

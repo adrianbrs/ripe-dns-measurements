@@ -34,3 +34,8 @@ export interface MeasurementEntry {
   type: string;
   stored_timestamp: number;
 }
+
+export interface Measurements {
+  ipv4: MeasurementEntry[];
+  ipv6: MeasurementEntry[];
+}

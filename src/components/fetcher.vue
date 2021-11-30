@@ -3,7 +3,7 @@
     <v-col cols="12" md="4">
       <v-text-field
         v-model="id"
-        label="ID da medição"
+        label="ID da medição (IPv4)"
         :rules="rules"
         :disabled="loading"
         placeholder="00000"
@@ -23,7 +23,9 @@
         :text-field-props="textProps"
         :date-picker-props="dateProps"
         :time-picker-props="timeProps"
-        v-model="timeStart"
+        :datetime.sync="startDate"
+        @input="datesChange"
+        v-model="startDate"
       >
         <template #dateIcon>
           <v-icon>mdi-calendar</v-icon>
@@ -46,7 +48,8 @@
         :text-field-props="textProps"
         :date-picker-props="dateProps"
         :time-picker-props="timeProps"
-        v-model="timeEnd"
+        @input="datesChange"
+        v-model="endDate"
       >
         <template #dateIcon>
           <v-icon>mdi-calendar</v-icon>
@@ -60,12 +63,16 @@
       </v-datetime-picker>
     </v-col>
 
+    <v-col cols="12" class="text-center">
+      <span>Período: {{ dateRange }}</span>
+    </v-col>
+
     <v-col cols="12">
       <v-btn
         :color="loading ? 'red' : 'primary'"
         block
-        :disabled="!id || !timeStart || !timeEnd"
-        @click="loading ? cancel() : search()"
+        :disabled="!id || !startDate || !endDate"
+        @click="search()"
       >
         <!-- Cancelar -->
         <template v-if="loading">
@@ -91,9 +98,9 @@
 </template>
 
 <script lang="ts">
-import { Component, Inject, Prop, Vue } from "vue-property-decorator";
-import { MeasurementEntry } from "@/interfaces/result.interface";
-import axios, { AxiosResponse } from "axios";
+import { Component, Inject, Prop, Vue, Watch } from "vue-property-decorator";
+import { MeasurementEntry, Measurements } from "@/interfaces/result.interface";
+import axios from "axios";
 import dayjs from "dayjs";
 
 const BASE_URL = "https://atlas.ripe.net/api/v2/measurements";
@@ -104,12 +111,16 @@ export default class AppUploader extends Vue {
   @Prop(Boolean)
   value!: boolean;
 
+  @Prop(Boolean)
+  doSearch!: boolean;
+
   @Inject()
   snackbar: (msg: string, color?: string) => void;
 
-  id: string | null = null;
-  timeStart!: Date;
-  timeEnd!: Date;
+  id: string | null = "10313";
+  startDate: Date;
+  endDate: Date;
+  dateRange = "-";
 
   rules = [(v: string): unknown => !!v || "ID obrigatório"];
   controller = new AbortController();
@@ -136,12 +147,38 @@ export default class AppUploader extends Vue {
     this.$emit("input", loading);
   }
 
+  @Watch("doSearch")
+  watchDoSearch(search: boolean): void {
+    if (search) {
+      this.search();
+    }
+  }
+
+  datesChange(): void {
+    this.dateRange = this.getDateRange();
+  }
+
+  getDateRange(): string {
+    const diff = dayjs(this.endDate).diff(this.startDate);
+    return dayjs.duration(diff).format("D[d] H[h] m[m] s[s]");
+  }
+
   created(): void {
     const now = dayjs();
-    const after = now.add(30, "seconds");
+    const before = now.subtract(
+      dayjs.duration(10, "minutes").asSeconds(),
+      "seconds"
+    );
 
-    this.timeStart = now.toDate();
-    this.timeEnd = after.toDate();
+    this.startDate = before.toDate();
+    this.endDate = now.toDate();
+    this.dateRange = this.getDateRange();
+  }
+
+  async mounted(): Promise<void> {
+    if (this.doSearch) {
+      await this.search();
+    }
   }
 
   success(result: MeasurementEntry[]): void {
@@ -150,40 +187,66 @@ export default class AppUploader extends Vue {
 
   cancel(): void {
     this.controller.abort();
+    this.controller = new AbortController();
     this.snackbar("Busca cancelada");
   }
 
+  getV6IdFromV4(v4Id: string): string {
+    return String(parseInt(v4Id) + 1000);
+  }
+
+  fetch(id: string, version: number): Promise<MeasurementEntry[]> {
+    return axios
+      .get(`${BASE_URL}/${id}/results`, {
+        params: {
+          start: this.startDate,
+          stop: this.endDate,
+          format: "json",
+        },
+        signal: this.controller.signal,
+        onDownloadProgress: (event: ProgressEvent<XMLHttpRequest>) => {
+          this.$emit("progress", version, event.loaded);
+        },
+      })
+      .then((res) => {
+        const { data } = res;
+        this.$emit(`load:ipv${version}`, data);
+        return data;
+      })
+      .catch((err) => {
+        if (String(err.response?.status) === "404") {
+          this.snackbar("Medição não encontrada: " + id, "error");
+        }
+        console.error(err);
+        return Promise.reject(err);
+      });
+  }
+
   async search(): Promise<void> {
-    if (this.id && this.timeStart && this.timeEnd) {
+    if (this.loading) {
+      this.cancel();
+      return;
+    }
+
+    if (this.id && this.startDate && this.endDate) {
       // Valida o limite em dias para busca
-      const diff = dayjs(this.timeStart).diff(this.timeEnd, "days");
+      const diff = dayjs(this.startDate).diff(this.endDate, "days");
       if (diff > LIMIT_DAYS) {
         this.snackbar("O limite máximo em dias é " + LIMIT_DAYS, "error");
         return;
       }
 
+      this.$emit("load", null);
       this.loading = true;
 
-      await axios
-        .get(`${BASE_URL}/${this.id}/results`, {
-          params: {
-            start: this.timeStart,
-            stop: this.timeEnd,
-            format: "json",
-          },
-          signal: this.controller.signal,
-          onDownloadProgress: (event: ProgressEvent<XMLHttpRequest>) => {
-            this.$emit("progress", event.loaded);
-          },
-        })
-        .then((res) => {
-          this.success(res.data);
-        })
-        .catch((err) => {
-          if (String(err.response?.status) === "404") {
-            this.snackbar("Medição não encontrada", "error");
-          }
-          console.error(err, err.response.status);
+      // IPv4
+      const ipv4Req = this.fetch(this.id, 4);
+      const ipv6Req = this.fetch(this.getV6IdFromV4(this.id), 6);
+
+      await Promise.all([ipv4Req, ipv6Req])
+        .then(([ipv4, ipv6]) => {
+          const results: Measurements = { ipv4, ipv6 };
+          this.$emit("load", results);
         })
         .finally(() => {
           this.loading = false;

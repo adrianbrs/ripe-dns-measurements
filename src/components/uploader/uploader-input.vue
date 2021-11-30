@@ -2,8 +2,8 @@
   <div class="d-flex">
     <v-file-input
       v-model="file"
-      label="Medição (JSON)"
-      placeholder="Faça upload do resultado da medição em JSON"
+      :label="`Medição ${fullIPVersion} (JSON)`"
+      :placeholder="`Resultado da medição ${fullIPVersion} em JSON`"
       prepend-icon="mdi-code-json"
       accept="application/json"
       :error="this.error"
@@ -16,24 +16,6 @@
       @change="onChange"
     >
     </v-file-input>
-
-    <v-tooltip right>
-      Clique para enviar
-
-      <template #activator="{ on }">
-        <v-btn
-          text
-          icon
-          class="ml-2"
-          v-on="on"
-          @click="upload()"
-          :loading="uploading"
-          :disabled="!file || uploading || uploaded"
-        >
-          <v-icon>mdi-upload</v-icon>
-        </v-btn>
-      </template>
-    </v-tooltip>
   </div>
 </template>
 
@@ -42,28 +24,59 @@ import { Component, Prop, Vue, Watch } from "vue-property-decorator";
 import { MeasurementEntry } from "@/interfaces/result.interface";
 
 @Component
-export default class AppUploader extends Vue {
-  @Prop(Boolean)
-  value!: boolean;
+export default class AppUploaderInput extends Vue {
+  @Prop(Blob)
+  value!: Blob | null;
 
-  file: Blob | null = null;
+  @Prop(Boolean)
+  loading!: boolean;
+
+  @Prop({
+    type: Number,
+    default: 4,
+  })
+  ipVersion!: 4 | 6;
+
+  @Prop(Boolean)
+  startUpload!: boolean;
+
   reader!: FileReader;
   error: string | null = null;
   uploaded = false;
 
   get uploading(): boolean {
-    return !!this.value;
+    return !!this.loading;
   }
   set uploading(uploading: boolean) {
-    this.$emit("input", uploading);
+    this.$emit("update:loading", uploading);
+  }
+
+  get file(): Blob {
+    return this.value;
+  }
+  set file(file: Blob) {
+    this.$emit("input", file);
+  }
+
+  get fullIPVersion(): string {
+    return `IPv${this.ipVersion}`;
   }
 
   @Watch("file")
   watchFile(file: Blob): void {
     if (!file) {
-      this.$emit("unload");
+      this.$emit("unload", this.ipVersion);
     }
     this.uploaded = false;
+  }
+
+  @Watch("startUpload", {
+    immediate: true,
+  })
+  watchStartUpload(start: boolean): void {
+    if (start) {
+      this.upload();
+    }
   }
 
   created(): void {
@@ -78,23 +91,22 @@ export default class AppUploader extends Vue {
     this.reader.addEventListener("abort", () => {
       this.uploading = false;
     });
-    // this.reader.addEventListener("progress", (e) => this.onProgress(e));
+    this.reader.addEventListener("progress", (e) => {
+      this.$emit("progress", this.ipVersion, e.loaded);
+    });
   }
 
   upload(): void {
-    if (this.file) {
-      this.reader.readAsText(this.file);
+    if (this.value) {
+      this.reader.readAsText(this.value);
     }
   }
 
   success(result: MeasurementEntry[]): void {
-    this.$emit("load", result);
+    this.$emit("load", this.ipVersion, result);
+    this.$emit("update:startUpload", false);
     this.uploaded = true;
   }
-
-  // onProgress(e: ProgressEvent<FileReader>) {
-
-  // }
 
   onChange(input: Blob | null): void {
     if (!input) {
