@@ -36,21 +36,21 @@
       </v-skeleton-loader>
     </v-col>
 
-    <v-col cols="12" lg="4">
+    <v-col cols="12" lg="6" xl="4">
       <app-probes-by-location
         :result="results ? results.ipv4 : null"
         :ip-version="4"
       ></app-probes-by-location>
     </v-col>
 
-    <v-col cols="12" lg="4">
+    <v-col cols="12" lg="6" xl="4">
       <app-probes-by-location
         :result="results ? results.ipv6 : null"
         :ip-version="6"
       ></app-probes-by-location>
     </v-col>
 
-    <v-col cols="12" lg="4">
+    <v-col cols="12" lg="12" xl="4">
       <app-probes-dual-stack :results="results"></app-probes-dual-stack>
     </v-col>
   </v-row>
